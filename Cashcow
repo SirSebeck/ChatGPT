@@ -23,7 +23,7 @@ extern double Lot_Size = 0.01;
 extern string __StopLoss__ = "***Stop Loss***";
 enum StopLossType_enum {Virtual_SL, Classic_SL};
 extern StopLossType_enum StopLoss_Type = Virtual_SL;
-extern int StopLoss = 200;
+extern int StopLoss = 50;
 
 extern string __TakeProfit__ = "***Take Profit***";
 enum TakeProfitType_enum {Virtual_TP, Classic_TP};
@@ -49,6 +49,14 @@ extern string __ExpertAdvisor__ = "***EA Settings***";
 extern string Trade_Comment = "RRS";
 extern int Magic = 1000;
 extern string EA_Notes = "Note For Your Reference";
+
+extern int EMA_Period = 50;
+extern int RSI_Period = 14;
+extern int RSI_OverBought = 70;
+extern int RSI_OverSold = 30;
+extern int Bollinger_Period = 20;
+extern double Bollinger_Deviation = 2.0;
+extern double RiskPercent = 2.0;
 
 //+------------------------------------------------------------------+
 //| Pre-Defined Value Auto                                           |
@@ -276,18 +284,26 @@ void OnTick()
 void Order_BuySell()
   {
    double OrderSend_StopLoss, OrderSend_TakeProfit;
-   if(OrderCount_BuyMagicOPBUY == 0 && CheckMoneyForTrade(_Symbol, Lot_Size, OP_BUY) == true && (Trading_Strategy == Buy_Order || Trading_Strategy == Hedge_Style || (Trading_Strategy == Buy_Sell && gLastOrderCheckType == 6) || (Trading_Strategy == BuySell_Random && OrderCount_SellMagicOPSELL == 0 && BuySellRandomMath == 0)))
+   double lots = CalculateLots(StopLoss);
+
+   if(OrderCount_BuyMagicOPBUY == 0 && CheckMoneyForTrade(_Symbol, lots, OP_BUY) == true && (Trading_Strategy == Buy_Order || Trading_Strategy == Hedge_Style || (Trading_Strategy == Buy_Sell && gLastOrderCheckType == 6) || (Trading_Strategy == BuySell_Random && OrderCount_SellMagicOPSELL == 0 && BuySellRandomMath == 0)))
      {
-      ResetLastError();
-      if(!OrderSend(Symbol(), OP_BUY, Lot_Size, Ask, Slippage, OrderSend_StopLoss = (StopLoss_Type == Classic_SL && StopLoss > 0) ? Ask - StopLoss * gPips : 0, OrderSend_TakeProfit = (TakeProfit_Type == Classic_TP && TakeProfit > 0) ? Ask + TakeProfit * gPips : 0, BuyStopTradeComment, gBuyMagic, 0, clrNONE))
-         Print("Buy Order => Error Code : " + GetLastError());
+      if(IsUpTrend() && AllowBuy() && BuyCondition())
+        {
+         ResetLastError();
+         if(!OrderSend(Symbol(), OP_BUY, lots, Ask, Slippage, OrderSend_StopLoss = (StopLoss_Type == Classic_SL && StopLoss > 0) ? Ask - StopLoss * gPips : 0, OrderSend_TakeProfit = (TakeProfit_Type == Classic_TP && TakeProfit > 0) ? Ask + TakeProfit * gPips : 0, BuyStopTradeComment, gBuyMagic, 0, clrNONE))
+            Print("Buy Order => Error Code : " + GetLastError());
+        }
      }
 
-   if(OrderCount_SellMagicOPSELL == 0 && CheckMoneyForTrade(_Symbol, Lot_Size, OP_SELL) == true && ((Trading_Strategy == Sell_Order || Trading_Strategy == Hedge_Style) || (Trading_Strategy == Buy_Sell && gLastOrderCheckType == 5) || (Trading_Strategy == BuySell_Random && OrderCount_BuyMagicOPBUY == 0 && BuySellRandomMath == 1)))
+   if(OrderCount_SellMagicOPSELL == 0 && CheckMoneyForTrade(_Symbol, lots, OP_SELL) == true && ((Trading_Strategy == Sell_Order || Trading_Strategy == Hedge_Style) || (Trading_Strategy == Buy_Sell && gLastOrderCheckType == 5) || (Trading_Strategy == BuySell_Random && OrderCount_BuyMagicOPBUY == 0 && BuySellRandomMath == 1)))
      {
-      ResetLastError();
-      if(!OrderSend(Symbol(), OP_SELL, Lot_Size, Bid, Slippage, OrderSend_StopLoss = (StopLoss_Type == Classic_SL && StopLoss > 0) ? Bid + StopLoss * gPips : 0, OrderSend_TakeProfit = (TakeProfit_Type == Classic_TP && TakeProfit > 0) ? Bid - TakeProfit * gPips : 0, SellStopTradeComment, gSellMagic, 0, clrNONE))
-         Print("Sell Order => Error Code : " + GetLastError());
+      if(IsDownTrend() && AllowSell() && SellCondition())
+        {
+         ResetLastError();
+         if(!OrderSend(Symbol(), OP_SELL, lots, Bid, Slippage, OrderSend_StopLoss = (StopLoss_Type == Classic_SL && StopLoss > 0) ? Bid + StopLoss * gPips : 0, OrderSend_TakeProfit = (TakeProfit_Type == Classic_TP && TakeProfit > 0) ? Bid - TakeProfit * gPips : 0, SellStopTradeComment, gSellMagic, 0, clrNONE))
+            Print("Sell Order => Error Code : " + GetLastError());
+        }
      }
   }
 
@@ -634,6 +650,56 @@ bool CheckMoneyForTrade(string symb, double lots,int type)
      }
 //--- checking successful
    return(true);
+  }
+
+//+------------------------------------------------------------------+
+//| Trend and Indicator Checks                                       |
+//+------------------------------------------------------------------+
+bool IsUpTrend()
+  {
+   double ema=iMA(Symbol(),0,EMA_Period,0,MODE_EMA,PRICE_CLOSE,0);
+   return(Close[0]>ema);
+  }
+
+bool IsDownTrend()
+  {
+   double ema=iMA(Symbol(),0,EMA_Period,0,MODE_EMA,PRICE_CLOSE,0);
+   return(Close[0]<ema);
+  }
+
+bool AllowBuy()
+  {
+   double rsi=iRSI(Symbol(),0,RSI_Period,PRICE_CLOSE,0);
+   return(rsi>RSI_OverSold && rsi<RSI_OverBought);
+  }
+
+bool AllowSell()
+  {
+   double rsi=iRSI(Symbol(),0,RSI_Period,PRICE_CLOSE,0);
+   return(rsi>RSI_OverSold && rsi<RSI_OverBought);
+  }
+
+bool BuyCondition()
+  {
+   double lower=iBands(Symbol(),0,Bollinger_Period,Bollinger_Deviation,0,PRICE_CLOSE,MODE_LOWER,0);
+   return(Close[0]<lower);
+  }
+
+bool SellCondition()
+  {
+   double upper=iBands(Symbol(),0,Bollinger_Period,Bollinger_Deviation,0,PRICE_CLOSE,MODE_UPPER,0);
+   return(Close[0]>upper);
+  }
+
+double CalculateLots(double sl)
+  {
+   double riskMoney = AccountBalance()*RiskPercent/100.0;
+   double riskPerLot = (sl*gPips/Point)*MarketInfo(Symbol(), MODE_TICKVALUE);
+   if(riskPerLot<=0) return gMinLotChecking;
+   double lots = riskMoney/riskPerLot;
+   if(lots<gMinLotChecking) lots = gMinLotChecking;
+   if(lots>gMaxLotChecking) lots = gMaxLotChecking;
+   return NormalizeDouble(lots,2);
   }
 //+------------------------------------------------------------------+
 
